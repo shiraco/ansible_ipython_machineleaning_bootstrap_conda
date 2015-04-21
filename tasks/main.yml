@@ -1,0 +1,141 @@
+---
+- hosts: ec2
+  vars:
+    python_version: miniconda3-3.8.3
+    user: ubuntu
+    home: /home/{{ user }}
+    swap_file_path: /swapfile
+    swap_file_size_mb: 1024
+    profile: nbserver
+    ipython_port: 8888
+    conda_virtualenv: ml_env
+    activate_home: "{{ home }}/.pyenv/versions/{{ python_version }}/envs/{{ conda_virtualenv }}"
+    notebook_repo: https://github.com/icoxfog417/scikit-learn-notebook.git
+  remote_user: ubuntu
+
+  tasks:
+    - name: apt-get updates a server
+      apt: update_cache=yes
+      sudo: yes
+      tags: initial_setup
+
+    - name: apt-get upgrade a server
+      apt: upgrade=full
+      sudo: yes
+      tags: initial_setup
+
+    - name: apt-get install basic pkg
+      apt: pkg={{ item }} state=installed
+      sudo: yes
+      with_items:
+      - git
+      - gcc
+      - make
+      - openssl
+      - build-essential
+      - zlib1g-dev
+      - libbz2-dev
+      - libssl-dev
+      - libreadline-dev
+      - libsqlite3-dev
+      - pkg-config
+      - gfortran
+      - libopenblas-dev
+      - libblas-dev
+      - liblapack-dev
+      - libpng-dev
+      - libjpeg8-dev
+      - libfreetype6
+      - libfreetype6-dev
+      tags: pyenv
+
+    - name: check pyenv is installed
+      command: test -x {{ home }}/.pyenv/bin/pyenv
+      sudo: no
+      register: pyenv_existence
+      ignore_errors: yes
+      tags: pyenv
+
+    - name: git clone pyenv
+      git: repo=https://github.com/yyuu/pyenv.git dest={{ home }}/.pyenv/
+      when: pyenv_existence|failed
+      ignore_errors: yes
+      tags: pyenv
+
+    - name: check .bash_profile is exist
+      stat: path={{ home }}/.bash_profile
+      register: bash_profile_existence
+      tags: pyenv
+
+    - name: set .bash_profile config by copying from file
+      copy: src=../files/bash_profile dest={{ home }}/.bash_profile
+      when: bash_profile_existence.stat.md5 is not defined
+      ignore_errors: yes
+      tags: pyenv
+
+    - name: install pyenv's python and rehash
+      shell: . {{ home }}/.bash_profile && pyenv install -s {{ python_version }} && pyenv rehash && pyenv global {{ python_version }}
+      when: pyenv_existence|failed
+      tags: pyenv
+
+    - name: pip install global python pkgs
+      pip: name={{ item }} state=latest executable={{ home }}/.pyenv/shims/pip
+      with_items:
+      - pip
+      tags: global_python
+
+    - name: check conda env dir is exist
+      stat: path={{ activate_home }}
+      register: conda_env_existence
+      tags: conda
+
+    - name: conda create
+      shell: . {{ home }}/.bash_profile && conda create -y -n {{ conda_virtualenv }} numpy scipy scikit-learn matplotlib cython ipython ipython-notebook
+      when: conda_env_existence.stat.md5 is not defined
+      tags: conda
+
+    - name: checking notebooks port
+      wait_for: host={{ inventory_hostname }} port={{ ipython_port }} state=stopped timeout=1
+      tags: ipython
+
+    - name: check ipython_profile is exist
+      stat: path={{ home }}/.ipython/profile_{{ profile }}
+      register: ipython_profile_existence
+      tags: ipython
+
+    - name: creating ipython profile
+      shell: . {{ home }}/.bash_profile && . {{ activate_home }}/bin/activate {{ conda_virtualenv }} && ipython profile create {{ profile }} executable=/bin/bash
+      when: ipython_profile_existence.stat.md5 is not defined
+      tags: ipython
+
+    - name: check notebook is cloned
+      command: test -x {{ home }}/scikit-learn-notebook
+      sudo: no
+      register: notebook_existence
+      ignore_errors: yes
+      tags: ipython
+
+    - name: git clone scikit-learn-notebook
+      git: repo={{ notebook_repo }} dest={{ home }}/scikit-learn-notebook
+      when: notebook_existence|failed
+      tags: ipython
+
+    - name: updating ipython configuration
+      lineinfile: >
+        dest="{{ home }}/.ipython/profile_{{ profile }}/ipython_notebook_config.py"
+        state=present
+        backrefs=yes
+        regexp="{{ item.regexp }}"
+        line="{{ item.line }}"
+      with_items:
+      - regexp: '^#?\s*c\.NotebookApp\.ip\s*=.*$'
+        line: c.NotebookApp.ip = '*'
+      - regexp: '^#?\s*c\.NotebookApp\.open_browser\s*=.*$'
+        line: c.NotebookApp.open_browser = False
+      - regexp: '^#?\s*c\.NotebookApp\.port\s*=.*$'
+        line: c.NotebookApp.port = {{ ipython_port }}
+      tags: ipython
+
+    - name: info
+      pause: prompt="Start IPython Notebook by executing 'ipython notebook --profile={{ profile }}', press ENTER to continue"
+      tags: info

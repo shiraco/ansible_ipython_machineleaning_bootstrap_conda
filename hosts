@@ -1,0 +1,3 @@
+[ec2]
+ec2_bootstrap ansible_connection=ssh
+
