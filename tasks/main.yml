@@ -47,6 +47,8 @@
       - libjpeg8-dev
       - libfreetype6
       - libfreetype6-dev
+      - libsm6
+      - libxrender-dev
       tags: pyenv
 
     - name: check pyenv is installed
