@@ -10,7 +10,7 @@
     ipython_port: 8888
     conda_virtualenv: ml_env
     activate_home: "{{ home }}/.pyenv/versions/{{ python_version }}/envs/{{ conda_virtualenv }}"
-    notebook_repo: https://github.com/icoxfog417/scikit-learn-notebook.git
+    notebook_repo: https://github.com/icoxfog417/number_recognizer.git
   remote_user: ubuntu
 
   tasks:
@@ -118,7 +118,7 @@
       tags: ipython
 
     - name: git clone scikit-learn-notebook
-      git: repo={{ notebook_repo }} dest={{ home }}/scikit-learn-notebook
+      git: repo={{ notebook_repo }} dest={{ home }}/number_recognizer
       when: notebook_existence|failed
       tags: ipython
 
